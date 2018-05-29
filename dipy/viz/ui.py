@@ -2618,3 +2618,267 @@ class FileSelectMenuText2D(UI):
             The new position (x, y) in pixels.
         """
         self.text_actor.position = position
+
+
+class RadioButton(UI):
+    """ A 2D set of options as buttons and is of type vtkTexturedActor2D.
+    Only one option can be selected.
+
+    Each option is a combination of a button
+    and a textbox with the option description.
+
+    Attributes
+    ----------
+    num_lines : int
+        Number of lines in the textbox for each option.
+    num_options : int
+        Number of options
+    text_width : int
+        Number of characters in a single line of each option.
+    button_side : float
+        Side length of each button in pixels.
+    options : list((Button2D, TextBox2D))
+        List of all the options in the radio button set.
+    origin : (float, float)
+        Top-left corner of the button of the first option.
+    padding : float
+        Distance between two adjacent options.
+    checked_option : int
+        Index of currently selected option.
+        Initialised to -1 when no option is selected.
+
+    """
+
+    def __init__(self, num_options, origin, text_width, padding=1,
+                 num_lines=1, font_size=18, font_family='Arial'):
+        """
+        Parameters
+        ----------
+        num_options : int
+            Number of options
+        origin : (float, float)
+            Top-left corner of the button of the first option
+        text_width : int
+            Number of characters in a single line of each option.
+        padding : float
+            The distance between two adjacent options
+        num_lines : int
+            Number of lines in the textbox for each option.
+        font_size : int
+            Size of the text font.
+        font_family : str
+            Currently only supports Arial.
+
+        """
+        super(RadioButton, self).__init__()
+        self.num_lines = num_lines
+        self.num_options = num_options
+        self.text_width = text_width
+        self._origin = origin
+        self._padding = padding
+        self.button_side = font_size * 1.2
+        self._font_size = font_size
+        self.font_family = font_family
+
+        self.button_icons = dict()
+        self.button_icons['unchecked'] = read_viz_icons(fname="stop2.png")
+        self.button_icons['checked'] = read_viz_icons(fname="checkmark.png")
+
+        self.options = []
+        self.checked_option = -1
+        for option_no in range(num_options):
+            option = self.create_option(option_no)
+            self.options.append(option)
+
+    def get_actors(self):
+        """ Returns the button and textbox actors.
+
+        """
+        actors = []
+        for option in self.options:
+            actors.extend(option)
+        return actors
+
+    def create_option(self, option_no):
+        """ Creates the radio button and textbox.
+        Returns the pair of Button2D object and TextBox2D object.
+
+        Parameters
+        ----------
+        option_no : int
+            Index of the option to be created
+
+        """
+        button = Button2D(icon_fnames=self.button_icons,
+                          size=(self.button_side, self.button_side))
+        button.on_left_mouse_button_pressed = self.select_option
+        button_center_y = self.origin[1] - option_no * \
+            (self.button_side * self.num_lines + self.padding)
+        button.set_center((self.origin[0] + self.button_side,
+                           button_center_y))
+
+        text = TextBox2D(height=self.num_lines, width=self.text_width,
+                         text=str(option_no + 1), font_size=self.font_size,
+                         font_family=self.font_family)
+        text.set_center((self.origin[0] + self.button_side + self.padding +
+                        (self.text_width * self.font_size) / 4,
+                        button_center_y - self.button_side / 2))
+        text.parent_ui = self
+        text.on_key_press = self.key_press
+
+        return (button, text)
+
+    def select_option(self, i_ren, obj, button_object):
+        """ Selects an option and unchecks the previously selected one.
+        Returns the TextBox2D object of the selected option.
+
+        Parameters
+        ----------
+        i_ren : :class:`CustomInteractorStyle`
+        obj : :class:`vtkActor`
+            The picked actor
+        button_object : :class:`Button2D`
+
+        """
+        button_object.next_icon()
+        if self.checked_option != -1:
+            self.options[self.checked_option][0].next_icon()
+        for option_no, (button, textbox) in enumerate(self.options):
+            if button == button_object:
+                event = textbox
+                self.checked_option = option_no
+
+        i_ren.force_render()
+        print(event)
+        return event
+
+    def add_option(self):
+        """ Adds an option.
+
+        """
+        self.num_options = self.num_options + 1
+        option = self.create_option(self.num_options - 1)
+        self.options.append(option)
+
+    def shift_button_up(self, textbox_object, shift):
+        """ Shifts the radio button for a textbox
+        if a line break is inserted or deleted.
+
+        Parameters
+        ----------
+        textbox_object: :class: 'TextBox2D'
+            The textbox for which the button is to be shifted
+        shift: int
+            Change in the number of lines
+
+        """
+        for option_no, (button, textbox) in enumerate(self.options):
+            if textbox == textbox_object:
+                button_center_y = self.origin[1] - option_no * \
+                    (self.button_side * self.num_lines + self.padding)
+                button.set_center((self.origin[0] + self.button_side,
+                                   button_center_y +
+                                   shift * self.font_size * 1.1 / 2))
+                break
+
+    def set_positions(self):
+        """ Sets the centers of all buttons and textboxes if
+            one of the properties has changed
+
+        """
+        for option_no, (button, textbox) in enumerate(self.options):
+            button_center_y = self.origin[1] - option_no * \
+                (self.button_side * self.num_lines + self.padding)
+            button.set_center((self.origin[0] + self.button_side,
+                               button_center_y))
+            textbox.set_center((self.origin[0] + self.button_side +
+                                self.padding +
+                                (self.text_width * self.font_size) / 4,
+                                button_center_y - self.button_side / 2))
+
+    @property
+    def font_size(self):
+        """ Gets the font size of text.
+
+        """
+        return self._font_size
+
+    @font_size.setter
+    def font_size(self, size):
+        """ Sets the font size of text.
+
+        Parameters
+        ----------
+        size : int
+            New font size.
+
+        """
+        self._font_size = size
+        self.button_side = size * 1.2
+        for button, textbox in self.options:
+            button.size = (self.button_side, self.button_side)
+            textbox.actor.actor.GetTextProperty().SetFontSize(size)
+        self.set_positions()
+
+    @property
+    def padding(self):
+        """ Gets the padding between options.
+
+        """
+        return self._padding
+
+    @padding.setter
+    def padding(self, padding):
+        """ Sets the padding between options.
+
+        Parameters
+        ----------
+        padding : float
+            New padding.
+
+        """
+        self._padding = padding
+        self.set_positions()
+
+    @property
+    def origin(self):
+        """ Gets the top-left corner of first option.
+
+        """
+        return self._origin
+
+    @origin.setter
+    def origin(self, new_origin):
+        """ Sets the top-left corner of first option.
+
+        Parameters
+        ----------
+        new_origin : (float,float)
+            New origin.
+
+        """
+        self._origin = new_origin
+        self.set_positions()
+
+    @staticmethod
+    def key_press(i_ren, obj, textbox_obj):
+        """ Key press handler for textbox
+
+        Parameters
+        ----------
+        i_ren: :class:`CustomInteractorStyle`
+        obj: :class:`vtkActor`
+            The picked actor
+        textbox_obj: :class:`TextBox2D`
+
+        """
+        key = i_ren.event.key
+        initial_lines = textbox_obj.actor.message.count('\n')
+        is_done = textbox_obj.handle_character(key)
+        if is_done:
+            i_ren.remove_active_prop(textbox_obj.actor.get_actor())
+
+        new_lines = textbox_obj.actor.message.count('\n')
+        if new_lines != initial_lines:
+            textbox_obj.parent_ui.shift_button_up(textbox_obj, new_lines)
+        i_ren.force_render()

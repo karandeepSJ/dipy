@@ -496,6 +496,36 @@ def test_ui_file_select_menu_2d(recording=False):
             expected = EventCounter.load(expected_events_counts_filename)
             event_counter.check_counts(expected)
 
+
+@npt.dec.skipif(not have_vtk or skip_it)
+@xvfb_it
+def test_ui_radio_button(interactive=False):
+    radio_button_test = ui.RadioButton(num_options=4, origin=(300, 300),
+                                       text_width=10, num_lines=2)
+
+    npt.assert_equal(radio_button_test.checked_option, -1)
+
+    for option_no, (button, textbox) in enumerate(radio_button_test.options):
+        npt.assert_equal(button.current_icon_name, "unchecked")
+        npt.assert_equal(textbox.text, str(option_no + 1))
+
+    radio_button_test.padding = 3
+    npt.assert_equal(radio_button_test.padding, 3)
+
+    radio_button_test.origin = (200, 200)
+    npt.assert_equal(radio_button_test.origin, (200, 200))
+
+    radio_button_test.font_size = 14
+    npt.assert_equal(radio_button_test.font_size, 14)
+    for button, textbox in radio_button_test.options:
+        npt.assert_equal(textbox.actor.actor.
+                         GetTextProperty().GetFontSize(), 14)
+
+    if interactive:
+        showm = window.ShowManager(size=(600, 600))
+        showm.ren.add(radio_button_test)
+        showm.start()
+
 if __name__ == "__main__":
     if len(sys.argv) <= 1 or sys.argv[1] == "test_ui_button_panel":
         test_ui_button_panel(recording=True)
@@ -511,3 +541,6 @@ if __name__ == "__main__":
 
     if len(sys.argv) <= 1 or sys.argv[1] == "test_ui_file_select_menu_2d":
         test_ui_file_select_menu_2d(recording=True)
+
+    if len(sys.argv) <= 1 or sys.argv[1] == "test_ui_radio_button":
+        test_ui_radio_button(interactive=True)
