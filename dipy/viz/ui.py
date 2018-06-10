@@ -2218,8 +2218,13 @@ class ListBox2D(UI):
         self.multiselection = multiselection
         self.reverse_scrolling = reverse_scrolling
         # self.center = position
+        self.slot_height = self.font_size * self.line_spacing
+
         super(ListBox2D, self).__init__()
 
+        self.scroll_step_size = (self.slot_height * (self.nb_slots - 0.5) -
+                                 self.scroll_bar.height) \
+            / (len(self.values) - self.nb_slots)
         self.update()
 
         # Offer some standard hooks to the user.
@@ -2231,13 +2236,17 @@ class ListBox2D(UI):
         Create the ListBox (Panel2D) filled with empty slots (ListBoxItem2D).
         """
         size = self.panel_size
-        font_size = 20
-        line_spacing = 1.4
-        # Calculating the number of slots.
-        height = int(font_size * line_spacing)
-        nb_slots = int(size[1] // height)
+        font_size = self.font_size
+        line_spacing = self.line_spacing
 
-        # This panel is just to facilitate the addition of actors at the right positions
+        # Calculating the number of slots.
+        height = self.slot_height
+        nb_slots = int(size[1] // height)
+        self.nb_slots = nb_slots
+        height = int(height)
+
+        # This panel is just to facilitate the addition of actors
+        # at the right positions
         self.panel = Panel2D(size=size, color=(1, 1, 1))
 
         # Initialisation of empty text actors
@@ -2251,17 +2260,33 @@ class ListBox2D(UI):
             self.slots.append(item)
             self.panel.add_element(item, (x, y))
 
-        arrow_up = read_viz_icons(fname="arrow-up.png")
-        self.up_button = Button2D({"up": arrow_up})
-        self.panel.add_element(self.up_button, (0.95, 0.95), anchor="center")
+        # arrow_up = read_viz_icons(fname="arrow-up.png")
+        # self.up_button = Button2D({"up": arrow_up})
+        # self.panel.add_element(self.up_button, (0.95, 0.95), anchor="center")
 
-        arrow_down = read_viz_icons(fname="arrow-down.png")
-        self.down_button = Button2D({"down": arrow_down})
-        self.panel.add_element(self.down_button, (0.95, 0.05), anchor="center")
+        # arrow_down = read_viz_icons(fname="arrow-down.png")
+        # self.down_button = Button2D({"down": arrow_down})
+        # self.panel.add_element(self.down_button,
+        #                        (0.95, 0.05), anchor="center")
+
+        scroll_bar_height = nb_slots * size[1] / len(self.values)
+        self.scroll_bar = Rectangle2D(size=(x, scroll_bar_height))
+        self.scroll_bar.color = (1, 0, 0)
+        if len(self.values) <= nb_slots:
+            self.scroll_bar.set_visibility(False)
+        self.panel.add_element(
+            self.scroll_bar,
+            (int(0.95 * size[0]),
+             int(size[1] - height / 2 - scroll_bar_height / 2)),
+            anchor="center")
 
         # Add default events listener for this UI component.
-        self.up_button.on_left_mouse_button_pressed = self.up_button_callback
-        self.down_button.on_left_mouse_button_pressed = self.down_button_callback
+        # self.up_button.on_left_mouse_button_pressed = \
+        #     self.up_button_callback
+        # self.down_button.on_left_mouse_button_pressed = \
+        #     self.down_button_callback
+        self.scroll_bar.on_left_mouse_button_dragged = \
+            self.scroll_drag_callback
 
         # Handle mouse wheel events on the panel.
         up_event = "MouseWheelForwardEvent"
@@ -2269,15 +2294,21 @@ class ListBox2D(UI):
         if self.reverse_scrolling:
             up_event, down_event = down_event, up_event  # Swap events
 
-        self.add_callback(self.panel.background.actor, up_event, self.up_button_callback)
-        self.add_callback(self.panel.background.actor, down_event, self.down_button_callback)
+        self.add_callback(self.panel.background.actor,
+                          up_event, self.up_button_callback)
+        self.add_callback(self.panel.background.actor,
+                          down_event, self.down_button_callback)
 
         # Handle mouse wheel events on the slots.
         for slot in self.slots:
-            self.add_callback(slot.background.actor, up_event, self.up_button_callback)
-            self.add_callback(slot.background.actor, down_event, self.down_button_callback)
-            self.add_callback(slot.textblock.actor, up_event, self.up_button_callback)
-            self.add_callback(slot.textblock.actor, down_event, self.down_button_callback)
+            self.add_callback(slot.background.actor,
+                              up_event, self.up_button_callback)
+            self.add_callback(slot.background.actor,
+                              down_event, self.down_button_callback)
+            self.add_callback(slot.textblock.actor,
+                              up_event, self.up_button_callback)
+            self.add_callback(slot.textblock.actor,
+                              down_event, self.down_button_callback)
 
     def resize(self, size):
         pass
@@ -2323,6 +2354,13 @@ class ListBox2D(UI):
         if self.view_offset > 0:
             self.view_offset -= 1
             self.update()
+            scroll_bar_idx = self.panel._elements.index(self.scroll_bar)
+            self.scroll_bar.center = (self.scroll_bar.center[0],
+                                      self.scroll_bar.center[1] +
+                                      self.scroll_step_size)
+            self.panel.element_offsets[scroll_bar_idx] = (
+                self.scroll_bar,
+                (self.scroll_bar.position - self.panel.position))
 
         i_ren.force_render()
         i_ren.event.abort()  # Stop propagating the event.
@@ -2338,18 +2376,62 @@ class ListBox2D(UI):
         list_box: :class:`ListBox2D`
 
         """
-        view_end = self.view_offset + len(self.slots)
+        view_end = self.view_offset + self.nb_slots
         if view_end < len(self.values):
             self.view_offset += 1
             self.update()
+            scroll_bar_idx = self.panel._elements.index(self.scroll_bar)
+            self.scroll_bar.center = (self.scroll_bar.center[0],
+                                      self.scroll_bar.center[1] -
+                                      self.scroll_step_size)
+            self.panel.element_offsets[scroll_bar_idx] = (
+                self.scroll_bar,
+                (self.scroll_bar.position - self.panel.position))
 
         i_ren.force_render()
         i_ren.event.abort()  # Stop propagating the event.
 
+    def scroll_drag_callback(self, i_ren, obj, rect_obj):
+        """ Dragging scroll bar in the combo box.
+
+        Parameters
+        ----------
+        i_ren: :class:`CustomInteractorStyle`
+        obj: :class:`vtkActor`
+            The picked actor
+        rect_obj: :class:`Rectangle2D`
+
+        """
+        position = i_ren.event.position
+        offset = int((position[1] - self.scroll_bar.center[1]) /
+                     self.scroll_step_size)
+
+        if offset > 0 and self.view_offset > 0:
+            offset = min(offset, self.view_offset)
+
+        elif offset < 0 and (
+                self.view_offset + self.nb_slots < len(self.values)):
+            offset = min(-offset,
+                         len(self.values) - self.nb_slots - self.view_offset)
+            offset = - offset
+        else:
+            return
+
+        self.view_offset -= offset
+        self.update()
+        scroll_bar_idx = self.panel._elements.index(self.scroll_bar)
+        self.scroll_bar.center = (self.scroll_bar.center[0],
+                                  self.scroll_bar.center[1] +
+                                  offset * self.scroll_step_size)
+        self.panel.element_offsets[scroll_bar_idx] = (
+            self.scroll_bar, (self.scroll_bar.position - self.panel.position))
+        i_ren.force_render()
+        i_ren.event.abort()
+
     def update(self):
         """ Refresh listbox's content. """
         view_start = self.view_offset
-        view_end = view_start + len(self.slots)
+        view_end = view_start + self.nb_slots
         values_to_show = self.values[view_start:view_end]
 
         # Populate slots according to the view.
@@ -2442,9 +2524,9 @@ class ListBoxItem2D(UI):
                                      vertical_justification="middle")
 
         # Add default events listener for this UI component.
-        #self.handle_events(self.background.actor)
-        #self.handle_events(self.textblock.actor)
-        #self.on_left_mouse_button_clicked = self.left_button_clicked
+        # self.handle_events(self.background.actor)
+        # self.handle_events(self.textblock.actor)
+        # self.on_left_mouse_button_clicked = self.left_button_clicked
         self.textblock.on_left_mouse_button_clicked = self.left_button_clicked
         self.background.on_left_mouse_button_clicked = self.left_button_clicked
 
