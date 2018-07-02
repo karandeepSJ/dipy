@@ -57,7 +57,7 @@ class UI(object):
         Callback function for when a keyboard key is pressed.
     """
 
-    def __init__(self, position=(0, 0)):
+    def __init__(self, position=(0, 0, 0)):
         """
         Parameters
         ----------
@@ -65,12 +65,11 @@ class UI(object):
             Absolute coordinates (x, y) of the lower-left corner of this
             UI component.
         """
-        self._position = np.array([0, 0])
+        self._position = np.array([0, 0, 0])
         self._callbacks = []
 
         self._setup()  # Setup needed actors and sub UI components.
         self.position = position
-
         self.left_button_state = "released"
         self.right_button_state = "released"
 
@@ -159,6 +158,8 @@ class UI(object):
     @position.setter
     def position(self, coords):
         coords = np.asarray(coords)
+        if len(coords) == 2:
+            coords = np.append(coords, self.position[2])
         self._set_position(coords)
         self._position = coords
 
@@ -167,15 +168,21 @@ class UI(object):
 
         Parameters
         ----------
-        coords: (float, float)
-            Absolute pixel coordinates (x, y).
+        coords: (float, float) or (float, float, float)
+            Absolute pixel coordinates (x, y) or (x, y, z).
         """
         msg = "Subclasses of UI must implement `_set_position(self, coords)`."
         raise NotImplementedError(msg)
 
     @property
     def size(self):
-        return np.asarray(self._get_size(), dtype=int)
+        size = self._get_size()
+        if len(size) != 3:
+            msg = ("Size must be 3 dimensional. Keep the 3rd dimension 0"
+                   " in case of 2D elements.")
+            raise TypeError(msg)
+
+        return np.asarray(size, dtype=int)
 
     def _get_size(self):
         msg = "Subclasses of UI must implement property `size`."
@@ -191,14 +198,16 @@ class UI(object):
 
         Parameters
         ----------
-        coords: (float, float)
-            Absolute pixel coordinates (x, y).
+        coords: (float, float, float)
+            Absolute pixel coordinates (x, y) or (x, y, z).
         """
         if not hasattr(self, "size"):
             msg = "Subclasses of UI must implement the `size` property."
             raise NotImplementedError(msg)
 
         new_center = np.array(coords)
+        if len(new_center) == 2:
+            new_center = np.append(new_center, self.center[2])
         size = np.array(self.size)
         new_lower_left_corner = new_center - size / 2.
         self.position = new_lower_left_corner
@@ -300,7 +309,7 @@ class Button2D(UI):
         lower_left_corner = self.texture_points.GetPoint(0)
         upper_right_corner = self.texture_points.GetPoint(2)
         size = np.array(upper_right_corner) - np.array(lower_left_corner)
-        return abs(size[:2])
+        return abs(size)
 
     def _build_icons(self, icon_fnames):
         """ Converts file names to vtkImageDataGeometryFilters.
@@ -365,16 +374,16 @@ class Button2D(UI):
         tc.InsertComponent(3, 1, 1.0)
         self.texture_polydata.GetPointData().SetTCoords(tc)
 
-        texture_mapper = vtk.vtkPolyDataMapper2D()
+        texture_mapper = vtk.vtkPolyDataMapper()
         texture_mapper = set_input(texture_mapper, self.texture_polydata)
 
-        button = vtk.vtkTexturedActor2D()
+        button = vtk.vtkActor()
         button.SetMapper(texture_mapper)
 
         self.texture = vtk.vtkTexture()
         button.SetTexture(self.texture)
 
-        button_property = vtk.vtkProperty2D()
+        button_property = vtk.vtkProperty()
         button_property.SetOpacity(1.0)
         button.SetProperty(button_property)
         self.actor = button
@@ -447,6 +456,7 @@ class Button2D(UI):
         factor : (float, float)
             Scaling factor (width, height) in pixels.
         """
+        factor = (factor[0], factor[1], 1)
         self.resize(self.size * factor)
 
     def set_icon(self, icon):
@@ -530,10 +540,10 @@ class Rectangle2D(UI):
         self._polygonPolyData.SetPolys(polygons)
 
         # Create a mapper and actor
-        mapper = vtk.vtkPolyDataMapper2D()
+        mapper = vtk.vtkPolyDataMapper()
         mapper = set_input(mapper, self._polygonPolyData)
 
-        self.actor = vtk.vtkActor2D()
+        self.actor = vtk.vtkActor()
         self.actor.SetMapper(mapper)
 
         # Add default events listener to the VTK actor.
@@ -558,11 +568,11 @@ class Rectangle2D(UI):
         lower_left_corner = np.array(self._points.GetPoint(0)[:2])
         upper_right_corner = np.array(self._points.GetPoint(2)[:2])
         size = abs(upper_right_corner - lower_left_corner)
-        return size
+        return abs(np.append(size, 0))
 
     @property
     def width(self):
-        return self._points.GetPoint(2)[0]
+        return self.size[0]
 
     @width.setter
     def width(self, width):
@@ -570,7 +580,7 @@ class Rectangle2D(UI):
 
     @property
     def height(self):
-        return self._points.GetPoint(2)[1]
+        return self.size[1]
 
     @height.setter
     def height(self, height):
@@ -676,11 +686,11 @@ class Disk2D(UI):
         self._disk.Update()
 
         # Mapper
-        mapper = vtk.vtkPolyDataMapper2D()
+        mapper = vtk.vtkPolyDataMapper()
         mapper = set_input(mapper, self._disk.GetOutputPort())
 
         # Actor
-        self.actor = vtk.vtkActor2D()
+        self.actor = vtk.vtkActor()
         self.actor.SetMapper(mapper)
 
         # Add default events listener to the VTK actor.
@@ -702,7 +712,7 @@ class Disk2D(UI):
 
     def _get_size(self):
         diameter = 2 * self.outer_radius
-        size = (diameter, diameter)
+        size = (diameter, diameter, 0)
         return size
 
     def _set_position(self, coords):
@@ -714,7 +724,7 @@ class Disk2D(UI):
             Absolute pixel coordinates (x, y).
         """
         # Disk actor are positioned with respect to their center.
-        self.actor.SetPosition(*coords + self.outer_radius)
+        self.actor.SetPosition(coords + (self.outer_radius, self.outer_radius, 0))
 
     @property
     def color(self):
@@ -896,6 +906,8 @@ class Panel2D(UI):
             panel's size.
         """
         coords = np.array(coords)
+        if len(coords) == 2:
+            coords = np.append(coords, 0)
 
         if np.issubdtype(coords.dtype, np.floating):
             if np.any(coords < 0) or np.any(coords > 1):
@@ -918,7 +930,7 @@ class Panel2D(UI):
 
     def left_button_pressed(self, i_ren, obj, panel2d_object):
         click_pos = np.array(i_ren.event.position)
-        self._drag_offset = click_pos - panel2d_object.position
+        self._drag_offset = click_pos - panel2d_object.position[:2]
         i_ren.event.abort()  # Stop propagating the event.
 
     def left_button_dragged(self, i_ren, obj, panel2d_object):
@@ -981,7 +993,7 @@ class TextBlock2D(UI):
     def __init__(self, text="Text Block", font_size=18, font_family='Arial',
                  justification='left', vertical_justification="bottom",
                  bold=False, italic=False, shadow=False,
-                 color=(1, 1, 1), bg_color=None, position=(0, 0)):
+                 color=(1, 1, 1), bg_color=None, position=(0, 0, 0)):
         """
         Parameters
         ----------
@@ -1021,7 +1033,7 @@ class TextBlock2D(UI):
         self.message = text
 
     def _setup(self):
-        self.actor = vtk.vtkTextActor()
+        self.actor = vtk.vtkTextActor3D()
         self._background = None  # For VTK < 7
         self.handle_events(self.actor)
 
@@ -1349,9 +1361,11 @@ class TextBlock2D(UI):
 
         Parameters
         ----------
-        position : (float, float)
-            The new position. (x, y) in pixels.
+        position : (float, float) or (float, float, float)
+            The new position. (x, y) or (x, y, z) in pixels.
         """
+        if len(position) == 2:
+            position = np.append(position, self.position[2])
         self.actor.SetPosition(*position)
         if self._background is not None:
             self._background.SetPosition(*self.actor.GetPosition())
@@ -1830,7 +1844,7 @@ class LineSlider2D(UI):
         # Consider the handle's size when computing the slider's size.
         width = self.track.width + self.handle.size[0]
         height = max(self.track.height, self.handle.size[1])
-        return np.array([width, height])
+        return np.array([width, height, 0])
 
     def _set_position(self, coords):
         """ Position the lower-left corner of this UI component.
@@ -2126,7 +2140,7 @@ class LineDoubleSlider2D(UI):
         # Consider the handle's size when computing the slider's size.
         width = self.track.width + 2 * self.handles[0].size[0]
         height = max(self.track.height, self.handles[0].size[1])
-        return np.array([width, height])
+        return np.array([width, height, 0])
 
     def _set_position(self, coords):
         """ Position the lower-left corner of this UI component.
@@ -2567,7 +2581,7 @@ class RingSlider2D(UI):
         click_position: (float, float)
             Position of the mouse click.
         """
-        x, y = np.array(click_position) - self.center
+        x, y = np.array(click_position) - self.center[:2]
         angle = np.arctan2(y, x)
         if angle < 0:
             angle += TWO_PI
@@ -2841,7 +2855,7 @@ class ImageContainer2D(UI):
         lower_left_corner = self.texture_points.GetPoint(0)
         upper_right_corner = self.texture_points.GetPoint(2)
         size = np.array(upper_right_corner) - np.array(lower_left_corner)
-        return abs(size[:2])
+        return abs(size)
 
     def _setup(self):
         """ Setup this UI Component.
@@ -2876,16 +2890,16 @@ class ImageContainer2D(UI):
         tc.InsertComponent(3, 1, 1.0)
         self.texture_polydata.GetPointData().SetTCoords(tc)
 
-        texture_mapper = vtk.vtkPolyDataMapper2D()
+        texture_mapper = vtk.vtkPolyDataMapper()
         texture_mapper = set_input(texture_mapper, self.texture_polydata)
 
-        image = vtk.vtkTexturedActor2D()
+        image = vtk.vtkActor()
         image.SetMapper(texture_mapper)
 
         self.texture = vtk.vtkTexture()
         image.SetTexture(self.texture)
 
-        image_property = vtk.vtkProperty2D()
+        image_property = vtk.vtkProperty()
         image_property.SetOpacity(1.0)
         image.SetProperty(image_property)
         self.actor = image
@@ -2940,6 +2954,7 @@ class ImageContainer2D(UI):
         factor : (float, float)
             Scaling factor (width, height) in pixels.
         """
+        factor = (factor[0], factor[1], 1)
         self.resize(self.size * factor)
 
     def set_img(self, img):

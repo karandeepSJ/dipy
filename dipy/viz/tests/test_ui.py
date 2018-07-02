@@ -320,7 +320,7 @@ def test_text_block_2d():
     _check_property(text_block, "font_size", range(100))
     _check_property(text_block, "message", ["", "Hello World", "Line\nBreak"])
     _check_property(text_block, "justification", ["left", "center", "right"])
-    _check_property(text_block, "position", [(350, 350), (0.5, 0.5)])
+    _check_property(text_block, "position", [(350, 350, 0), (0.5, 0.5, 0)])
     _check_property(text_block, "color", [(0., 0.5, 1.)])
     _check_property(text_block, "background_color", [(0., 0.5, 1.), None])
     _check_property(text_block, "vertical_justification",
@@ -462,7 +462,7 @@ def test_ui_line_double_slider_2d(interactive=False):
     line_double_slider_2d_test = ui.LineDoubleSlider2D(
         center=(300, 300), shape="disk", outer_radius=15, min_value=-10,
         max_value=10, initial_values=(-10, 10))
-    npt.assert_equal(line_double_slider_2d_test.handles[0].size, (30, 30))
+    npt.assert_equal(line_double_slider_2d_test.handles[0].size, (30, 30, 0))
     npt.assert_equal(line_double_slider_2d_test.left_disk_value, -10)
     npt.assert_equal(line_double_slider_2d_test.right_disk_value, 10)
 
@@ -475,7 +475,7 @@ def test_ui_line_double_slider_2d(interactive=False):
     line_double_slider_2d_test = ui.LineDoubleSlider2D(
         center=(300, 300), shape="square", handle_side=5,
         initial_values=(50, 40))
-    npt.assert_equal(line_double_slider_2d_test.handles[0].size, (5, 5))
+    npt.assert_equal(line_double_slider_2d_test.handles[0].size, (5, 5, 0))
     npt.assert_equal(line_double_slider_2d_test._values[0], 39)
     npt.assert_equal(line_double_slider_2d_test.right_disk_value, 40)
 
@@ -615,10 +615,10 @@ def test_ui_image_container_2d(interactive=False):
         img_path=read_viz_icons(fname='home3.png'))
 
     image_test.center = (300, 300)
-    npt.assert_equal(image_test.size, (100, 100))
+    npt.assert_equal(image_test.size, (100, 100, 0))
 
     image_test.scale((2, 2))
-    npt.assert_equal(image_test.size, (200, 200))
+    npt.assert_equal(image_test.size, (200, 200, 0))
 
     current_size = (600, 600)
     show_manager = window.ShowManager(size=current_size, title="DIPY Button")
