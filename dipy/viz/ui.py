@@ -2,6 +2,7 @@ from __future__ import division
 from _warnings import warn
 
 import numpy as np
+import math
 
 from dipy.data import read_viz_icons
 from dipy.viz.interactor import CustomInteractorStyle
@@ -529,10 +530,10 @@ class Rectangle2D(UI):
         self._polygonPolyData.SetPolys(polygons)
 
         # Create a mapper and actor
-        mapper = vtk.vtkPolyDataMapper2D()
+        mapper = vtk.vtkPolyDataMapper()
         mapper = set_input(mapper, self._polygonPolyData)
 
-        self.actor = vtk.vtkActor2D()
+        self.actor = vtk.vtkActor()
         self.actor.SetMapper(mapper)
 
         # Add default events listener to the VTK actor.
@@ -554,8 +555,8 @@ class Rectangle2D(UI):
 
     def _get_size(self):
         # Get 2D coordinates of two opposed corners of the rectangle.
-        lower_left_corner = np.array(self._points.GetPoint(0)[:2])
-        upper_right_corner = np.array(self._points.GetPoint(2)[:2])
+        lower_left_corner = np.array(self._points.GetPoint(0))
+        upper_right_corner = np.array(self._points.GetPoint(2))
         size = abs(upper_right_corner - lower_left_corner)
         return size
 
@@ -597,7 +598,7 @@ class Rectangle2D(UI):
         coords: (float, float)
             Absolute pixel coordinates (x, y).
         """
-        self.actor.SetPosition(*coords)
+        self.actor.SetPosition(coords[0],coords[1],0)
 
     @property
     def color(self):
@@ -1020,7 +1021,7 @@ class TextBlock2D(UI):
         self.message = text
 
     def _setup(self):
-        self.actor = vtk.vtkTextActor()
+        self.actor = vtk.vtkTextActor3D()
         self._background = None  # For VTK < 7
         self.handle_events(self.actor)
 
@@ -1031,6 +1032,12 @@ class TextBlock2D(UI):
             return [self.actor, self._background]
 
         return [self.actor]
+
+    def _get_size(self):
+        characters = len(self.message)
+        width = characters * self.font_size / 1.8
+        height = self.font_size * 1.1
+        return (width, height)
 
     def _add_to_renderer(self, ren):
         """ Add all subcomponents or VTK props that compose this UI component.
@@ -1351,6 +1358,7 @@ class TextBlock2D(UI):
         position : (float, float)
             The new position. (x, y) in pixels.
         """
+        position = (position[0],position[1],0)
         self.actor.SetPosition(*position)
         if self._background is not None:
             self._background.SetPosition(*self.actor.GetPosition())
@@ -3303,3 +3311,371 @@ class ListBoxItem2D(UI):
         self.list_box.select(self, multiselect, range_select)
         i_ren.force_render()
         i_ren.event.abort()  # Stop propagating the event.
+
+
+class Cuboid(UI):
+    """ A cuboid element sub-classed from UI.
+    """
+
+    def __init__(self, size=(0, 0, 0), position=(0, 0, 0), color=(1, 1, 1),
+                 opacity=1.0):
+        """ Initializes a cuboid.
+
+        Parameters
+        ----------
+        size : (int, int, int)
+            The size of the cuboid (width, height, depth) in pixels.
+        position : (float, float, float)
+            Coordinates (x, y, z) of the lower-left corner of the cuboid.
+        color : (float, float, float)
+            Must take values in [0, 1].
+        opacity : float
+            Must take values in [0, 1].
+        """
+        super(Cuboid, self).__init__(position)
+        self.color = color
+        self.opacity = opacity
+        self.resize(size)
+
+    def _setup(self):
+        """ Setup this UI component.
+        """
+        self.cuboid = vtk.vtkCubeSource()
+        self.cuboid.SetXLength(1)
+        self.cuboid.SetYLength(1)
+        self.cuboid.SetZLength(1)
+        cuboidMapper = vtk.vtkPolyDataMapper()
+        cuboidMapper.SetInputConnection(self.cuboid.GetOutputPort())
+        self.actor = vtk.vtkActor()
+        self.actor.SetMapper(cuboidMapper)
+
+    def _get_actors(self):
+        """ Get the actors composing this UI component.
+        """
+        return [self.actor]
+
+    def _add_to_renderer(self, ren):
+        """ Add all subcomponents or VTK props that compose this UI component.
+
+        Parameters
+        ----------
+        ren : renderer
+        """
+        ren.add(self.actor)
+
+    def _get_size(self):
+        size = (self.width, self.height, self.depth)
+        return size
+
+    @property
+    def width(self):
+        return self.cuboid.GetXLength()
+
+    @width.setter
+    def width(self, width):
+        self.resize((width, self.height, self.depth))
+
+    @property
+    def height(self):
+        return self.cuboid.GetYLength()
+
+    @height.setter
+    def height(self, height):
+        self.resize((self.width, height, self.depth))
+
+    @property
+    def depth(self):
+        return self.cuboid.GetZLength()
+
+    @depth.setter
+    def depth(self, depth):
+        self.resize((self.width, self.height, depth))
+
+    def resize(self, size):
+        """ Sets the cuboid's size.
+
+        Parameters
+        ----------
+        size : (float, float, float)
+            Size (width, height, depth) in pixels.
+        """
+        self.cuboid.SetXLength(size[0])
+        self.cuboid.SetYLength(size[1])
+        self.cuboid.SetZLength(size[2])
+
+    def _set_position(self, coords):
+        """ Position the lower-left corner of this UI component.
+
+        Parameters
+        ----------
+        coords: (float, float, float)
+            Absolute pixel coordinates (x, y, z).
+        """
+        self.actor.SetPosition(*coords)
+
+    @property
+    def color(self):
+        """ Gets the cuboid's color.
+        """
+        color = self.actor.GetProperty().GetColor()
+        return np.asarray(color)
+
+    @color.setter
+    def color(self, color):
+        """ Sets the cuboid's color.
+
+        Parameters
+        ----------
+        color : (float, float, float)
+            RGB. Must take values in [0, 1].
+        """
+        self.actor.GetProperty().SetColor(*color)
+
+    @property
+    def opacity(self):
+        """ Gets the cuboid's opacity.
+        """
+        return self.actor.GetProperty().GetOpacity()
+
+    @opacity.setter
+    def opacity(self, opacity):
+        """ Sets the cuboid's opacity.
+
+        Parameters
+        ----------
+        opacity : float
+            Degree of transparency. Must be between [0, 1].
+        """
+        self.actor.GetProperty().SetOpacity(opacity)
+
+
+class Orbit(UI):
+    """ The circular orbit for the follower menu.
+    """
+
+    def __init__(self, position, radius):
+        """
+
+        Parameters
+        ----------
+        position: (float, float, float)
+        diameter: float
+        """
+        super(Orbit, self).__init__(position)
+        self._disk.SetInnerRadius(radius)
+        self._disk.SetOuterRadius(radius+1)
+        self._disk.Update()
+
+    def _get_actors(self):
+        return [self.actor]
+
+    def _setup(self):
+        """ Setup this UI component.
+
+        Creating the disk actor used internally.
+        """
+        # Setting up disk actor.
+        self._disk = vtk.vtkDiskSource()
+        self._disk.SetRadialResolution(10)
+        self._disk.SetCircumferentialResolution(50)
+        self._disk.Update()
+
+        # Mapper
+        mapper = vtk.vtkPolyDataMapper()
+        mapper = set_input(mapper, self._disk.GetOutputPort())
+
+        # Actor
+        self.actor = vtk.vtkActor()
+        self.actor.SetMapper(mapper)
+
+        # Add default events listener to the VTK actor.
+        self.add_callback(self.actor, "RightButtonPressEvent", self.c)
+
+
+    def _add_to_renderer(self, ren):
+        """ Add all subcomponents or VTK props that compose this UI component.
+
+        Parameters
+        ----------
+        ren : renderer
+        """
+        ren.add(self.actor)
+
+    def _get_size(self):
+        diameter = 2 * self._disk.GetOuterRadius()
+        size = (diameter, diameter,0)
+        return size
+
+    def _set_position(self, coords):
+        """ Position the lower-left corner of this UI component's bounding box.
+
+        Parameters
+        ----------
+        coords: (float, float, float)
+            Absolute pixel coordinates (x, y, z).
+        """
+        # Disk actor are positioned with respect to their center.
+        self.actor.SetPosition(coords)
+
+    def c(self,i_ren,obj,follower):
+        print("AAAA")
+
+        i_ren.event.abort()
+
+
+class FollowerMenu(UI):
+
+    def __init__(self, position, radius, camera, elements):
+        """
+
+        Parameters
+        ----------
+        position: (float, float, float)
+        diameter: float
+        camera: vtkCamera
+        elements: list(UI)
+        """
+        self.camera = camera
+        self.radius = radius
+        super(FollowerMenu, self).__init__(position)
+
+        self.elements = elements
+
+        self.orbit = Orbit(radius=radius, position=position)
+        self.actor.AddPart(self.orbit.actor)
+        self.add_components(components=elements)
+        self.visibility = False
+        self.set_visibility(self.visibility)
+
+    def _setup(self):
+        self.actor = vtk.vtkAssembly()
+        dummy_follower = vtk.vtkFollower()
+        self.actor.AddPart(dummy_follower)
+        dummy_follower.SetCamera(self.camera)
+
+        # Get assembly transformation matrix.
+        M = vtk.vtkTransform()
+        M.SetMatrix(self.actor.GetMatrix())
+
+        # Get the inverse of the assembly transformation matrix.
+        M_inv = M
+        M_inv.Inverse()
+
+        # Create a transform object that gets updated whenever the input matrix
+        # is updated, which is whenever the camera moves.
+        dummy_follower_transform = vtk.vtkMatrixToLinearTransform()
+        dummy_follower_transform.SetInput(dummy_follower.GetMatrix())
+
+        T = vtk.vtkTransform()
+        T.PostMultiply()
+        # Bring the assembly to the origin.
+        T.Concatenate(M_inv)
+        # Change orientation of the assembly.
+        T.Concatenate(dummy_follower_transform)
+        # Bring the assembly back where it was.
+        T.Concatenate(M)
+
+        self.actor.SetUserTransform(T)
+
+    def add_components(self, components):
+        """ Adds parts to the orbit.
+
+        Parameters
+        ----------
+        components: list(UI)
+        """
+        num_components = len(components)
+        angular_difference = 360/num_components
+        self.components = []
+        for i in range(num_components):
+            self.components.append(components[i])
+            theta = math.radians(angular_difference*(i+1))
+            x = self.position[0] + ((self.radius+0.5) * math.cos(theta))
+            y = self.position[1] + ((self.radius+0.5) * math.sin(theta))
+            components[i].center = (x,y,0)
+
+            if isinstance(components[i],TextFollower):
+                x = x + 0.5 * math.cos(theta)
+                y = y + 0.5 * math.sin(theta)
+                text_rotation = angular_difference*(i+1)
+                # if text_rotation > 90 and text_rotation < 270:
+                #     components[i].actor.RotateZ(180)   
+                components[i].position = (x,y,0)
+                components[i].actor.RotateZ(text_rotation)
+
+            for actor in components[i].actors:
+                self.actor.AddPart(actor)
+
+    def _add_to_renderer(self, ren):
+        """ Add all subcomponents or VTK props that compose this UI component.
+
+        Parameters
+        ----------
+        ren : renderer
+        """
+        ren.add(self.actor)
+
+    def _get_actors(self):
+        return [self.actor]
+
+    def _get_size(self):
+        return self.orbit.size
+
+    def _set_position(self, coords):
+        """ Position the lower-left corner of this UI component's bounding box.
+
+        Parameters
+        ----------
+        coords: (float, float, float)
+            Absolute pixel coordinates (x, y, z).
+        """
+        # Disk actor are positioned with respect to their center.
+        self.actor.SetPosition(coords)
+
+
+class TextFollower(UI):
+    """ 3D text that follows the camera.
+    """
+
+    def __init__(self, text, color, scale, position=(0,0,0)):
+        """
+
+        Parameters
+        ----------
+        text: string
+        color: (float, float, float)
+        """
+        self.text = text
+        super(TextFollower, self).__init__(position)
+        self.actor.SetScale(scale)
+        self.actor.GetProperty().SetColor(color)
+
+    def _get_actors(self):
+        return [self.actor]
+
+    def _setup(self):
+        """
+
+        Parameters
+        ----------
+        text: string
+        color: (float, float, float)
+        """
+        actor_text = vtk.vtkVectorText()
+        actor_text.SetText(self.text)
+
+        mapper = vtk.vtkPolyDataMapper()
+        mapper.SetInputConnection(actor_text.GetOutputPort())
+        self.actor = vtk.vtkActor()
+        self.actor.SetMapper(mapper)
+
+    def _add_to_renderer(self):
+        ren.add(self.actor)
+
+    def _set_position(self,position):
+        position = (position[0],position[1],0)
+        self.actor.SetPosition(position)
+
+    def _get_size(self):
+        size = 2*(self.actor.GetCenter()-self.position)
+        return size
